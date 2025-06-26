@@ -15,44 +15,20 @@ interface PollingData {
   yr: number;
 }
 
-// Party names mapping (Norwegian political parties)
-const partyNames: Record<string, string> = {
-  'Ap': 'Arbeiderpartiet',
-  'SV': 'Sosialistisk Venstreparti',
-  'R': 'Rødt',
-  'Sp': 'Senterpartiet',
-  'V': 'Venstre',
-  'KrF': 'Kristelig Folkeparti',
-  'H': 'Høyre',
-  'Frp': 'Fremskrittspartiet',
-  'A': 'Andre',
-  'MDG': 'Miljøpartiet De Grønne'
-};
-
-// Party colors for styling
-const partyColors: Record<string, string> = {
-  'Ap': '#E31837',
-  'SV': '#C91D3E',
-  'R': '#FF0000',
-  'Sp': '#00A651',
-  'V': '#0066CC',
-  'KrF': '#FFCC00',
-  'H': '#0066CC',
-  'Frp': '#0066CC',
-  'A': '#999999',
-  'MDG': '#00A651'
-};
+// Import utilities
+import { getPartyColor } from "../utils/partyColors";
+import { partyNames } from "../utils/partyNames";
 
 // Format date
 function formatDate(month: number, year: number): string {
   // Convert 2-digit year to 4-digit year (8 -> 2008, 25 -> 2025)
   const fullYear = 2000 + year;
   const date = new Date(fullYear, month - 1);
-  return date.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString("no-NO", { month: "long", year: "numeric" });
 }
 
 // Fetch data from the Norwegian election polling API
-const response = await fetch('https://pop.dngroup.io/stortingsvalg-snitt');
+const response = await fetch("https://pop.dngroup.io/stortingsvalg-snitt");
 const data: PollingData[] = await response.json();
 
 // Sort data by date (newest first)
@@ -67,21 +43,26 @@ const latestData = sortedData[0];
 
 <div class="polling-container">
   <h1>Norske Stortingsvalg - Målinger</h1>
-  
+
   <!-- Summary of latest polling -->
   <div class="summary">
     <h2>Siste måling: {formatDate(latestData.mnd, latestData.yr)}</h2>
     <div class="party-summary">
-      {Object.entries(partyNames).map(([abbr, name]) => {
-        const percentage = latestData[abbr as keyof PollingData];
-        if (percentage === undefined || percentage === 0) return null;
-        return (
-          <div class="party-item" style={`--party-color: ${partyColors[abbr]}`}>
-            <span class="party-name">{name}</span>
-            <span class="party-percentage">{percentage.toFixed(1)}%</span>
-          </div>
-        );
-      })}
+      {
+        Object.entries(partyNames).map(([abbr, name]) => {
+          const percentage = latestData[abbr as keyof PollingData];
+          if (percentage === undefined || percentage === 0) return null;
+          return (
+            <div
+              class="party-item"
+              style={`--party-color: oklch(${getPartyColor(abbr)})`}
+            >
+              <span class="party-name">{name}</span>
+              <span class="party-percentage">{percentage.toFixed(1)}%</span>
+            </div>
+          );
+        })
+      }
     </div>
   </div>
 
@@ -92,33 +73,40 @@ const latestData = sortedData[0];
       <thead>
         <tr>
           <th>Dato</th>
-          {Object.entries(partyNames).map(([abbr, name]) => (
-            <th style={`--party-color: ${partyColors[abbr]}`}>
-              <div class="party-header">
-                <span class="party-abbr">{abbr}</span>
-                <span class="party-full">{name}</span>
-              </div>
-            </th>
-          ))}
+          {
+            Object.entries(partyNames).map(([abbr, name]) => (
+              <th style={`--party-color: oklch(${getPartyColor(abbr)})`}>
+                <div class="party-header">
+                  <span class="party-abbr">{abbr}</span>
+                  <span class="party-full">{name}</span>
+                </div>
+              </th>
+            ))
+          }
         </tr>
       </thead>
       <tbody>
-        {sortedData.map((row: PollingData) => (
-          <tr>
-            <td class="date-cell">{formatDate(row.mnd, row.yr)}</td>
-            {Object.keys(partyNames).map(abbr => {
-              const percentage = row[abbr as keyof PollingData];
-              if (percentage === undefined || percentage === 0) {
-                return <td class="empty-cell">-</td>;
-              }
-              return (
-                <td class="percentage-cell" style={`--party-color: ${partyColors[abbr]}`}>
-                  {percentage.toFixed(1)}%
-                </td>
-              );
-            })}
-          </tr>
-        ))}
+        {
+          sortedData.map((row: PollingData) => (
+            <tr>
+              <td class="date-cell">{formatDate(row.mnd, row.yr)}</td>
+              {Object.keys(partyNames).map((abbr) => {
+                const percentage = row[abbr as keyof PollingData];
+                if (percentage === undefined || percentage === 0) {
+                  return <td class="empty-cell">-</td>;
+                }
+                return (
+                  <td
+                    class="percentage-cell"
+                    style={`--party-color: ${getPartyColor(abbr)}`}
+                  >
+                    {percentage.toFixed(1)}%
+                  </td>
+                );
+              })}
+            </tr>
+          ))
+        }
       </tbody>
     </table>
   </div>
@@ -129,7 +117,8 @@ const latestData = sortedData[0];
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      sans-serif;
   }
 
   h1 {
@@ -164,7 +153,7 @@ const latestData = sortedData[0];
     background: white;
     border-radius: 6px;
     border-left: 4px solid var(--party-color);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
   .party-name {
@@ -186,7 +175,7 @@ const latestData = sortedData[0];
     width: 100%;
     border-collapse: collapse;
     background: white;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     border-radius: 8px;
     overflow: hidden;
   }
@@ -194,25 +183,23 @@ const latestData = sortedData[0];
   .polling-table th {
     background: #f8f9fa;
     padding: 15px 10px;
-    text-align: center;
     font-weight: 600;
     color: #333;
     border-bottom: 2px solid #dee2e6;
     position: sticky;
     top: 0;
     z-index: 10;
+    text-align: left;
   }
 
   .polling-table td {
     padding: 12px 10px;
-    text-align: center;
     border-bottom: 1px solid #dee2e6;
   }
 
   .date-cell {
     font-weight: 500;
     color: #666;
-    text-align: left;
     min-width: 120px;
   }
 
@@ -228,7 +215,6 @@ const latestData = sortedData[0];
   .party-header {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 4px;
   }
 
@@ -241,7 +227,6 @@ const latestData = sortedData[0];
   .party-full {
     font-size: 0.8em;
     color: #666;
-    text-align: center;
     line-height: 1.2;
   }
 
@@ -249,19 +234,19 @@ const latestData = sortedData[0];
     .polling-container {
       padding: 10px;
     }
-    
+
     .party-summary {
       grid-template-columns: 1fr;
     }
-    
+
     .party-header .party-full {
       display: none;
     }
-    
+
     .polling-table th,
     .polling-table td {
       padding: 8px 6px;
       font-size: 0.9em;
     }
   }
-</style> 
+</style>

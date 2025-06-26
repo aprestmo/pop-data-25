@@ -15,33 +15,9 @@ interface PollingData {
   yr: number;
 }
 
-// Party names mapping (Norwegian political parties)
-const partyNames: Record<string, string> = {
-  Ap: "Arbeiderpartiet",
-  SV: "Sosialistisk Venstreparti",
-  R: "Rødt",
-  Sp: "Senterpartiet",
-  V: "Venstre",
-  KrF: "Kristelig Folkeparti",
-  H: "Høyre",
-  Frp: "Fremskrittspartiet",
-  A: "Andre",
-  MDG: "Miljøpartiet De Grønne",
-};
-
-// Party colors for styling
-const partyColors: Record<string, string> = {
-  Ap: "#E31837",
-  SV: "#C91D3E",
-  R: "#FF0000",
-  Sp: "#00A651",
-  V: "#0066CC",
-  KrF: "#FFCC00",
-  H: "#0066CC",
-  Frp: "#0066CC",
-  A: "#999999",
-  MDG: "#00A651",
-};
+// Import utilities
+import { getPartyColor } from "../utils/partyColors";
+import { partyNames } from "../utils/partyNames";
 
 // Format date for display
 function formatDate(month: number, year: number): string {
@@ -74,12 +50,20 @@ const sortedData = filteredData.sort((a: PollingData, b: PollingData) => {
   return dateA.localeCompare(dateB);
 });
 
-// Prepare data for the graph
-const graphData = sortedData.map((item: PollingData) => ({
+// Prepare data for the graph - both full period and 2025 only
+const fullPeriodData = sortedData.map((item: PollingData) => ({
   date: formatDate(item.mnd, item.yr),
   fullDate: createDateString(item.mnd, item.yr),
   ...item,
 }));
+
+const year2025Data = sortedData
+  .filter((item: PollingData) => item.yr === 25)
+  .map((item: PollingData) => ({
+    date: formatDate(item.mnd, item.yr),
+    fullDate: createDateString(item.mnd, item.yr),
+    ...item,
+  }));
 
 // Get all available parties from the data
 const availableParties = Object.keys(partyNames).filter((party) =>
@@ -92,11 +76,17 @@ const availableParties = Object.keys(partyNames).filter((party) =>
 ---
 
 <div class="trend-container">
-  <h1>Oppslutning over tid</h1>
-  <p class="subtitle">
-    Velg ett eller flere partier for å se hvordan støtten i befolkningen har
-    endret seg.
-  </p>
+  <h1>Trend over tid - Norske Stortingsvalg</h1>
+  <p class="subtitle">Målinger fra september 2021 til i dag</p>
+
+  <!-- Time period selection -->
+  <div class="period-selection">
+    <label for="periodSelect" class="period-label">Tidsperiode:</label>
+    <select id="periodSelect" class="period-select">
+      <option value="full">Siste 4 år</option>
+      <option value="2025">2025</option>
+    </select>
+  </div>
 
   <!-- Party selection checkboxes -->
   <div class="party-selection">
@@ -113,7 +103,7 @@ const availableParties = Object.keys(partyNames).filter((party) =>
             />
             <span
               class="checkbox-custom"
-              style={`--party-color: ${partyColors[party]}`}
+              style={`--party-color: oklch(${getPartyColor(party)})`}
             />
             <span class="party-label">{partyNames[party]}</span>
           </label>
@@ -128,10 +118,16 @@ const availableParties = Object.keys(partyNames).filter((party) =>
   </div>
 </div>
 
-<!-- Hidden data element to pass data to client script -->
+<!-- Hidden data elements to pass data to client script -->
 <div
-  id="graphData"
-  data-graph-data={JSON.stringify(graphData)}
+  id="fullPeriodData"
+  data-graph-data={JSON.stringify(fullPeriodData)}
+  style="display: none;"
+>
+</div>
+<div
+  id="year2025Data"
+  data-graph-data={JSON.stringify(year2025Data)}
   style="display: none;"
 >
 </div>
@@ -139,48 +135,26 @@ const availableParties = Object.keys(partyNames).filter((party) =>
 <script>
   // Chart.js for the graph
   import Chart from "chart.js/auto";
+  import { getPartyColor } from "../utils/partyColors";
+  import { partyNames } from "../utils/partyNames";
 
-  // Party colors for the chart
-  const partyColors: Record<string, string> = {
-    Ap: "#E31837",
-    SV: "#C91D3E",
-    R: "#FF0000",
-    Sp: "#00A651",
-    V: "#0066CC",
-    KrF: "#FFCC00",
-    H: "#0066CC",
-    Frp: "#0066CC",
-    A: "#999999",
-    MDG: "#00A651",
-  };
-
-  // Party names
-  const partyNames: Record<string, string> = {
-    Ap: "Arbeiderpartiet",
-    SV: "Sosialistisk Venstreparti",
-    R: "Rødt",
-    Sp: "Senterpartiet",
-    V: "Venstre",
-    KrF: "Kristelig Folkeparti",
-    H: "Høyre",
-    Frp: "Fremskrittspartiet",
-    A: "Andre",
-    MDG: "Miljøpartiet De Grønne",
-  };
-
-  // Get the graph data from the hidden element
-  const dataElement = document.getElementById("graphData");
-  const graphData = dataElement
-    ? JSON.parse(dataElement.getAttribute("data-graph-data") || "[]")
+  // Get the graph data from the hidden elements
+  const fullPeriodElement = document.getElementById("fullPeriodData");
+  const year2025Element = document.getElementById("year2025Data");
+  const fullPeriodData = fullPeriodElement
+    ? JSON.parse(fullPeriodElement.getAttribute("data-graph-data") || "[]")
+    : [];
+  const year2025Data = year2025Element
+    ? JSON.parse(year2025Element.getAttribute("data-graph-data") || "[]")
     : [];
 
   // Create datasets for each party
-  function createDatasets(selectedParties: string[]) {
+  function createDatasets(selectedParties: string[], graphData: any[]) {
     return selectedParties.map((party) => ({
       label: partyNames[party],
       data: graphData.map((item: any) => item[party] || null),
-      borderColor: partyColors[party],
-      backgroundColor: partyColors[party] + "20",
+      borderColor: `oklch(${getPartyColor(party)})`,
+      backgroundColor: `oklch(${getPartyColor(party)} / 0.2)`,
       borderWidth: 2,
       fill: false,
       tension: 0.4,
@@ -207,11 +181,18 @@ const availableParties = Object.keys(partyNames).filter((party) =>
       .map((checkbox) => checkbox.dataset.party!)
       .filter(Boolean);
 
+    // Get initial period selection
+    const periodSelect = document.getElementById(
+      "periodSelect"
+    ) as HTMLSelectElement;
+    const currentData =
+      periodSelect.value === "2025" ? year2025Data : fullPeriodData;
+
     chart = new Chart(ctx, {
       type: "line",
       data: {
-        labels: graphData.map((item: any) => item.date),
-        datasets: createDatasets(selectedParties),
+        labels: currentData.map((item: any) => item.date),
+        datasets: createDatasets(selectedParties, currentData),
       },
       options: {
         responsive: true,
@@ -253,7 +234,7 @@ const availableParties = Object.keys(partyNames).filter((party) =>
     });
   }
 
-  // Update chart when checkboxes change
+  // Update chart when checkboxes or period selection changes
   function updateChart() {
     if (!chart) return;
 
@@ -264,7 +245,14 @@ const availableParties = Object.keys(partyNames).filter((party) =>
       .map((checkbox) => checkbox.dataset.party!)
       .filter(Boolean);
 
-    chart.data.datasets = createDatasets(selectedParties);
+    const periodSelect = document.getElementById(
+      "periodSelect"
+    ) as HTMLSelectElement;
+    const currentData =
+      periodSelect.value === "2025" ? year2025Data : fullPeriodData;
+
+    chart.data.labels = currentData.map((item: any) => item.date);
+    chart.data.datasets = createDatasets(selectedParties, currentData);
     chart.update();
   }
 
@@ -277,6 +265,12 @@ const availableParties = Object.keys(partyNames).filter((party) =>
     document.querySelectorAll(".party-checkbox").forEach((checkbox) => {
       checkbox.addEventListener("change", updateChart);
     });
+
+    // Add period select event listener
+    const periodSelect = document.getElementById("periodSelect");
+    if (periodSelect) {
+      periodSelect.addEventListener("change", updateChart);
+    }
   });
 </script>
 
@@ -300,6 +294,43 @@ const availableParties = Object.keys(partyNames).filter((party) =>
     color: #666;
     margin-bottom: 30px;
     font-size: 1.1em;
+  }
+
+  .period-selection {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+
+  .period-label {
+    font-weight: 500;
+    color: #333;
+    font-size: 1em;
+  }
+
+  .period-select {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 1em;
+    background: white;
+    color: #333;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+  }
+
+  .period-select:focus {
+    outline: none;
+    border-color: #0066cc;
+  }
+
+  .period-select:hover {
+    border-color: #0066cc;
   }
 
   .party-selection {
@@ -381,6 +412,12 @@ const availableParties = Object.keys(partyNames).filter((party) =>
   @media (max-width: 768px) {
     .trend-container {
       padding: 10px;
+    }
+
+    .period-selection {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
     }
 
     .checkbox-grid {
