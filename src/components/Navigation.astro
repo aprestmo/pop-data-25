@@ -1,6 +1,18 @@
+---
+// Get current pathname to determine active link
+const pathname = Astro.url.pathname;
+---
+
 <nav class="navigation">
-  <a href="/" class="nav-link active">Tabell</a>
-  <a href="/trend" class="nav-link">Trend over tid</a>
+  <a href="/" class={`nav-link ${pathname === "/" ? "active" : ""}`}>Tabell</a>
+  <a href="/trend" class={`nav-link ${pathname === "/trend" ? "active" : ""}`}
+    >Oppslutning over tid</a
+  >
+  <a
+    href="/opinion-polls"
+    class={`nav-link ${pathname === "/opinion-polls" ? "active" : ""}`}
+    >Meningsmålinger</a
+  >
 </nav>
 
 <style>

@@ -1,0 +1,292 @@
+---
+// Type definitions for polling data
+interface PollingData {
+  Ap?: number;
+  SV?: number;
+  R?: number;
+  Sp?: number;
+  V?: number;
+  KrF?: number;
+  H?: number;
+  Frp?: number;
+  A?: number;
+  MDG?: number;
+  mnd: number;
+  yr: number;
+}
+
+import { getPartyColor } from "../utils/partyColors";
+import { partyNames } from "../utils/partyNames";
+
+function formatDate(month: number, year: number): string {
+  const fullYear = 2000 + year;
+  const date = new Date(fullYear, month - 1);
+  return date.toLocaleDateString("no-NO", { month: "long", year: "numeric" });
+}
+
+const response = await fetch("https://pop.dngroup.io/stortingsvalg-snitt");
+const data: PollingData[] = await response.json();
+const year2025Data = data.filter((item: PollingData) => item.yr === 25);
+const sortedData = year2025Data.sort((a: PollingData, b: PollingData) => {
+  if (a.yr !== b.yr) return b.yr - a.yr;
+  return b.mnd - a.mnd;
+});
+const availableMonths = sortedData.map((item) => ({
+  month: item.mnd,
+  year: item.yr,
+  label: formatDate(item.mnd, item.yr),
+}));
+const latestData = sortedData[0];
+
+function getPartyRankings(
+  currentData: PollingData,
+  previousData?: PollingData
+) {
+  const parties = Object.keys(partyNames)
+    .map((abbr) => {
+      const currentPercentage = currentData[abbr as keyof PollingData];
+      const previousPercentage = previousData?.[abbr as keyof PollingData];
+      if (currentPercentage === undefined || currentPercentage === 0)
+        return null;
+      const change =
+        previousPercentage !== undefined && previousPercentage !== 0
+          ? currentPercentage - previousPercentage
+          : null;
+      return {
+        abbr,
+        name: partyNames[abbr],
+        percentage: currentPercentage,
+        change,
+      };
+    })
+    .filter((party): party is NonNullable<typeof party> => party !== null);
+  return parties.sort((a, b) => b.percentage - a.percentage);
+}
+function getPreviousMonthData(currentMonth: number, currentYear: number) {
+  let previousMonth = currentMonth - 1;
+  let previousYear = currentYear;
+  if (previousMonth === 0) {
+    previousMonth = 12;
+    previousYear = currentYear - 1;
+  }
+  return sortedData.find(
+    (item) => item.mnd === previousMonth && item.yr === previousYear
+  );
+}
+const currentRankings = getPartyRankings(
+  latestData,
+  getPreviousMonthData(latestData.mnd, latestData.yr)
+);
+const maxPercent = 35;
+---
+
+<div class="opinion-polls-card">
+  <div class="tabs">
+    <button id="tab-oppslutning" class="tab-btn active">Oppslutning</button>
+    <button id="tab-mandater" class="tab-btn">Mandater</button>
+  </div>
+  <div id="tab-content-oppslutning">
+    <div class="polls-header">
+      <h2>Meningsmålinger</h2>
+      <select id="monthSelect" class="month-select">
+        {
+          availableMonths.map(({ month, year, label }) => (
+            <option
+              value={`${year}-${month}`}
+              selected={month === latestData.mnd && year === latestData.yr}
+            >
+              {label}
+            </option>
+          ))
+        }
+      </select>
+    </div>
+    <div id="polls-list" class="polls-list">
+      {
+        currentRankings.slice(0, 4).map((party, idx) => (
+          <div
+            class="poll-row"
+            style={`--party-color: ${getPartyColor(party.abbr)}`}
+          >
+            <span class="party-badge">{party.abbr}</span>
+            <div class="bar-bg">
+              <div
+                class="bar-fill"
+                style={`width: ${(party.percentage / maxPercent) * 100}%`}
+              />
+            </div>
+            <span class="percent">{party.percentage.toFixed(1)} %</span>
+            {party.change !== null && party.change !== undefined && (
+              <span
+                class={`change ${party.change > 0 ? "up" : party.change < 0 ? "down" : ""}`}
+              >
+                {party.change > 0 ? "+" : ""}
+                {party.change.toFixed(1)}
+              </span>
+            )}
+          </div>
+        ))
+      }
+    </div>
+    <button id="showMoreBtn" class="show-more-btn">Se flere partier</button>
+  </div>
+  <div id="tab-content-mandater" style="display:none;">
+    <div class="mandater-placeholder">
+      <h2>Mandater</h2>
+      <p>Ingen data tilgjengelig ennå.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden data element to pass data to client script -->
+<div
+  id="rankingsData"
+  data-rankings-data={JSON.stringify(sortedData)}
+  style="display: none;"
+>
+</div>
+
+<script>
+  import { getPartyColor } from "../utils/partyColors";
+  import { partyNames } from "../utils/partyNames";
+  const dataElement = document.getElementById("rankingsData");
+  const allData = dataElement
+    ? JSON.parse(dataElement.getAttribute("data-rankings-data") || "[]")
+    : [];
+  const monthSelect = document.getElementById("monthSelect");
+  const pollsList = document.getElementById("polls-list");
+  const showMoreBtn = document.getElementById("showMoreBtn");
+  let showingAll = false;
+  function getPartyRankings(currentData, previousData) {
+    const parties = Object.keys(partyNames)
+      .map((abbr) => {
+        const currentPercentage = currentData[abbr];
+        const previousPercentage = previousData?.[abbr];
+        if (currentPercentage === undefined || currentPercentage === 0)
+          return null;
+        const change =
+          previousPercentage !== undefined && previousPercentage !== 0
+            ? currentPercentage - previousPercentage
+            : null;
+        return {
+          abbr,
+          name: partyNames[abbr],
+          percentage: currentPercentage,
+          change,
+        };
+      })
+      .filter((party) => party !== null);
+    return parties.sort((a, b) => b.percentage - a.percentage);
+  }
+  function getPreviousMonthData(currentMonth, currentYear) {
+    let previousMonth = currentMonth - 1;
+    let previousYear = currentYear;
+    if (previousMonth === 0) {
+      previousMonth = 12;
+      previousYear = currentYear - 1;
+    }
+    return allData.find(
+      (item) => item.mnd === previousMonth && item.yr === previousYear
+    );
+  }
+  function renderList(rankings, showAll) {
+    const maxPercent = 35;
+    const parties = showAll ? rankings : rankings.slice(0, 4);
+    if (!pollsList || !showMoreBtn) return;
+    pollsList.innerHTML = parties
+      .map(
+        (party) => `
+      <div class="poll-row" style="--party-color: ${getPartyColor(party.abbr)}">
+        <span class="party-badge">${party.abbr}</span>
+        <div class="bar-bg">
+          <div class="bar-fill" style="width: ${(party.percentage / maxPercent) * 100}%"></div>
+        </div>
+        <span class="percent">${party.percentage.toFixed(1)} %</span>
+        ${party.change !== null && party.change !== undefined ? `<span class="change ${party.change > 0 ? "up" : party.change < 0 ? "down" : ""}">${party.change > 0 ? "+" : ""}${party.change.toFixed(1)}</span>` : ""}
+      </div>
+    `
+      )
+      .join("");
+    showMoreBtn.textContent = showAll
+      ? "Vis færre partier"
+      : "Se flere partier";
+  }
+  function updateList() {
+    if (!monthSelect) return;
+    const selectedValue = monthSelect.value;
+    const [year, month] = selectedValue.split("-").map(Number);
+    const currentData = allData.find(
+      (item) => item.mnd === month && item.yr === year
+    );
+    if (!currentData) return;
+    const previousData = getPreviousMonthData(month, year);
+    const rankings = getPartyRankings(currentData, previousData);
+    renderList(rankings, showingAll);
+  }
+  // Tab switching logic
+  const tabOppslutning = document.getElementById("tab-oppslutning");
+  const tabMandater = document.getElementById("tab-mandater");
+  const tabContentOppslutning = document.getElementById(
+    "tab-content-oppslutning"
+  );
+  const tabContentMandater = document.getElementById("tab-content-mandater");
+  function switchTab(tab) {
+    if (tab === "oppslutning") {
+      tabOppslutning.classList.add("active");
+      tabMandater.classList.remove("active");
+      tabContentOppslutning.style.display = "";
+      tabContentMandater.style.display = "none";
+    } else {
+      tabOppslutning.classList.remove("active");
+      tabMandater.classList.add("active");
+      tabContentOppslutning.style.display = "none";
+      tabContentMandater.style.display = "";
+    }
+  }
+  document.addEventListener("DOMContentLoaded", () => {
+    updateList();
+    if (monthSelect) monthSelect.addEventListener("change", updateList);
+    if (showMoreBtn)
+      showMoreBtn.addEventListener("click", () => {
+        showingAll = !showingAll;
+        updateList();
+      });
+    if (tabOppslutning)
+      tabOppslutning.addEventListener("click", () => switchTab("oppslutning"));
+    if (tabMandater)
+      tabMandater.addEventListener("click", () => switchTab("mandater"));
+  });
+</script>
+
+<style>
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .tab-btn {
+    background: #f8f9fa;
+    border: none;
+    border-radius: 8px 8px 0 0;
+    padding: 10px 22px;
+    font-size: 1em;
+    font-weight: 600;
+    color: #333;
+    cursor: pointer;
+    transition:
+      background 0.18s,
+      color 0.18s;
+  }
+  .tab-btn.active {
+    background: #fff;
+    color: #0066cc;
+    border-bottom: 2px solid #0066cc;
+    z-index: 2;
+  }
+  .mandater-placeholder {
+    padding: 32px 0;
+    text-align: center;
+    color: #888;
+  }
+  /* Keep the rest of your previous styles for .poll-row, .bar-bg, .bar-fill, etc. */
+</style>
