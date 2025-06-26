@@ -199,21 +199,16 @@ const availableParties = Object.keys(partyNames).filter((party) =>
         maintainAspectRatio: false,
         plugins: {
           title: {
-            display: true,
-            text: "Stortingsvalg - Trend over tid",
-            font: {
-              size: 16,
-            },
+            display: false,
           },
           legend: {
-            display: true,
-            position: "top",
+            display: false,
           },
         },
         scales: {
           y: {
             beginAtZero: true,
-            max: 30,
+            max: 35,
             title: {
               display: true,
               text: "Prosent (%)",
