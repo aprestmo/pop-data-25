@@ -1,0 +1,394 @@
+---
+// Type definitions for polling data
+interface PollingData {
+  Ap?: number;
+  SV?: number;
+  R?: number;
+  Sp?: number;
+  V?: number;
+  KrF?: number;
+  H?: number;
+  Frp?: number;
+  A?: number;
+  MDG?: number;
+  mnd: number;
+  yr: number;
+}
+
+// Party names mapping (Norwegian political parties)
+const partyNames: Record<string, string> = {
+  Ap: "Arbeiderpartiet",
+  SV: "Sosialistisk Venstreparti",
+  R: "Rødt",
+  Sp: "Senterpartiet",
+  V: "Venstre",
+  KrF: "Kristelig Folkeparti",
+  H: "Høyre",
+  Frp: "Fremskrittspartiet",
+  A: "Andre",
+  MDG: "Miljøpartiet De Grønne",
+};
+
+// Party colors for styling
+const partyColors: Record<string, string> = {
+  Ap: "#E31837",
+  SV: "#C91D3E",
+  R: "#FF0000",
+  Sp: "#00A651",
+  V: "#0066CC",
+  KrF: "#FFCC00",
+  H: "#0066CC",
+  Frp: "#0066CC",
+  A: "#999999",
+  MDG: "#00A651",
+};
+
+// Format date for display
+function formatDate(month: number, year: number): string {
+  const fullYear = 2000 + year;
+  const date = new Date(fullYear, month - 1);
+  return date.toLocaleDateString("no-NO", { month: "short", year: "numeric" });
+}
+
+// Create date string for sorting
+function createDateString(month: number, year: number): string {
+  const fullYear = 2000 + year;
+  return `${fullYear}-${month.toString().padStart(2, "0")}`;
+}
+
+// Fetch data from the Norwegian election polling API
+const response = await fetch("https://pop.dngroup.io/stortingsvalg-snitt");
+const data: PollingData[] = await response.json();
+
+// Filter data from September 2021 onwards (mnd 9, yr 21)
+const filteredData = data.filter((item: PollingData) => {
+  const itemDate = createDateString(item.mnd, item.yr);
+  const startDate = "2021-09";
+  return itemDate >= startDate;
+});
+
+// Sort data by date (oldest first for the graph)
+const sortedData = filteredData.sort((a: PollingData, b: PollingData) => {
+  const dateA = createDateString(a.mnd, a.yr);
+  const dateB = createDateString(b.mnd, b.yr);
+  return dateA.localeCompare(dateB);
+});
+
+// Prepare data for the graph
+const graphData = sortedData.map((item: PollingData) => ({
+  date: formatDate(item.mnd, item.yr),
+  fullDate: createDateString(item.mnd, item.yr),
+  ...item,
+}));
+
+// Get all available parties from the data
+const availableParties = Object.keys(partyNames).filter((party) =>
+  sortedData.some(
+    (item) =>
+      item[party as keyof PollingData] !== undefined &&
+      item[party as keyof PollingData] !== 0
+  )
+);
+---
+
+<div class="trend-container">
+  <h1>Oppslutning over tid</h1>
+  <p class="subtitle">
+    Velg ett eller flere partier for å se hvordan støtten i befolkningen har
+    endret seg.
+  </p>
+
+  <!-- Party selection checkboxes -->
+  <div class="party-selection">
+    <h3>Velg partier å vise:</h3>
+    <div class="checkbox-grid">
+      {
+        availableParties.map((party) => (
+          <label class="checkbox-item">
+            <input
+              type="checkbox"
+              checked
+              data-party={party}
+              class="party-checkbox"
+            />
+            <span
+              class="checkbox-custom"
+              style={`--party-color: ${partyColors[party]}`}
+            />
+            <span class="party-label">{partyNames[party]}</span>
+          </label>
+        ))
+      }
+    </div>
+  </div>
+
+  <!-- Graph container -->
+  <div class="graph-container">
+    <canvas id="trendChart" width="800" height="400"></canvas>
+  </div>
+</div>
+
+<!-- Hidden data element to pass data to client script -->
+<div
+  id="graphData"
+  data-graph-data={JSON.stringify(graphData)}
+  style="display: none;"
+>
+</div>
+
+<script>
+  // Chart.js for the graph
+  import Chart from "chart.js/auto";
+
+  // Party colors for the chart
+  const partyColors: Record<string, string> = {
+    Ap: "#E31837",
+    SV: "#C91D3E",
+    R: "#FF0000",
+    Sp: "#00A651",
+    V: "#0066CC",
+    KrF: "#FFCC00",
+    H: "#0066CC",
+    Frp: "#0066CC",
+    A: "#999999",
+    MDG: "#00A651",
+  };
+
+  // Party names
+  const partyNames: Record<string, string> = {
+    Ap: "Arbeiderpartiet",
+    SV: "Sosialistisk Venstreparti",
+    R: "Rødt",
+    Sp: "Senterpartiet",
+    V: "Venstre",
+    KrF: "Kristelig Folkeparti",
+    H: "Høyre",
+    Frp: "Fremskrittspartiet",
+    A: "Andre",
+    MDG: "Miljøpartiet De Grønne",
+  };
+
+  // Get the graph data from the hidden element
+  const dataElement = document.getElementById("graphData");
+  const graphData = dataElement
+    ? JSON.parse(dataElement.getAttribute("data-graph-data") || "[]")
+    : [];
+
+  // Create datasets for each party
+  function createDatasets(selectedParties: string[]) {
+    return selectedParties.map((party) => ({
+      label: partyNames[party],
+      data: graphData.map((item: any) => item[party] || null),
+      borderColor: partyColors[party],
+      backgroundColor: partyColors[party] + "20",
+      borderWidth: 2,
+      fill: false,
+      tension: 0.4,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+    }));
+  }
+
+  // Initialize chart
+  let chart: Chart | null = null;
+
+  function initializeChart() {
+    const canvas = document.getElementById("trendChart") as HTMLCanvasElement;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Get initially selected parties (all checked by default)
+    const checkboxes = document.querySelectorAll(
+      ".party-checkbox:checked"
+    ) as NodeListOf<HTMLInputElement>;
+    const selectedParties = Array.from(checkboxes)
+      .map((checkbox) => checkbox.dataset.party!)
+      .filter(Boolean);
+
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: graphData.map((item: any) => item.date),
+        datasets: createDatasets(selectedParties),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: {
+            display: true,
+            text: "Stortingsvalg - Trend over tid",
+            font: {
+              size: 16,
+            },
+          },
+          legend: {
+            display: true,
+            position: "top",
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 30,
+            title: {
+              display: true,
+              text: "Prosent (%)",
+            },
+          },
+          x: {
+            title: {
+              display: true,
+              text: "Dato",
+            },
+          },
+        },
+        interaction: {
+          intersect: false,
+          mode: "index",
+        },
+      },
+    });
+  }
+
+  // Update chart when checkboxes change
+  function updateChart() {
+    if (!chart) return;
+
+    const checkboxes = document.querySelectorAll(
+      ".party-checkbox:checked"
+    ) as NodeListOf<HTMLInputElement>;
+    const selectedParties = Array.from(checkboxes)
+      .map((checkbox) => checkbox.dataset.party!)
+      .filter(Boolean);
+
+    chart.data.datasets = createDatasets(selectedParties);
+    chart.update();
+  }
+
+  // Initialize when DOM is loaded
+  document.addEventListener("DOMContentLoaded", () => {
+    // Initialize chart
+    initializeChart();
+
+    // Add checkbox event listeners
+    document.querySelectorAll(".party-checkbox").forEach((checkbox) => {
+      checkbox.addEventListener("change", updateChart);
+    });
+  });
+</script>
+
+<style>
+  .trend-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      sans-serif;
+  }
+
+  h1 {
+    color: #333;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: #666;
+    margin-bottom: 30px;
+    font-size: 1.1em;
+  }
+
+  .party-selection {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .party-selection h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+  }
+
+  .checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .checkbox-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+  }
+
+  .checkbox-item:hover {
+    background-color: #f8f9fa;
+  }
+
+  .checkbox-item input[type="checkbox"] {
+    display: none;
+  }
+
+  .checkbox-custom {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #ddd;
+    border-radius: 3px;
+    margin-right: 10px;
+    position: relative;
+    transition: all 0.2s ease;
+  }
+
+  .checkbox-item input[type="checkbox"]:checked + .checkbox-custom {
+    background-color: var(--party-color);
+    border-color: var(--party-color);
+  }
+
+  .checkbox-item input[type="checkbox"]:checked + .checkbox-custom::after {
+    content: "✓";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .party-label {
+    font-size: 0.9em;
+    color: #333;
+  }
+
+  .graph-container {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    height: 500px;
+  }
+
+  @media (max-width: 768px) {
+    .trend-container {
+      padding: 10px;
+    }
+
+    .checkbox-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .graph-container {
+      height: 400px;
+    }
+  }
+</style>
